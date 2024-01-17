@@ -16,17 +16,31 @@
 char ssid[] = "ssid";
 char pass[] = "password";
 #define servername "tfserver"  // 定义服务器的名字
+#define CTRLTF 15              // 1=TF连接ESP32
+#define CTRL_483 16            // 0=切换芯片开
+#define TFPWR_EXT 7            // 0=TF电源用外部设备
+#define TFPWR_32 6             // 0=TF电源用ESP32
 
 AsyncWebServer server(80);
 bool SD_present = false;  // 控制TF卡是否存在
 
 void setup(void) {
-  SD_MMC.setPins(17, 18, 3, 46, 9, 10);
-  pinMode(15, OUTPUT);
-  pinMode(16, OUTPUT);
-  digitalWrite(15, LOW);  // 模拟开关切换到TF卡直出
-  digitalWrite(16, LOW);  // TF卡电源开
-  Serial.begin(115200);   // 串口115200bps
+  pinMode(11, INPUT_PULLUP);
+  pinMode(13, INPUT_PULLUP);
+  pinMode(14, INPUT_PULLUP);
+  pinMode(9, INPUT_PULLUP);
+  pinMode(10, INPUT_PULLUP);
+  SD_MMC.setPins(12, 11, 13, 14, 9, 10);
+  pinMode(CTRLTF, OUTPUT);
+  pinMode(CTRL_483, OUTPUT);
+  pinMode(TFPWR_EXT, OUTPUT);
+  pinMode(TFPWR_32, OUTPUT);
+  //默认连接外部机器
+  digitalWrite(CTRLTF, LOW);
+  digitalWrite(TFPWR_EXT, LOW);
+  digitalWrite(CTRL_483, LOW);
+  digitalWrite(TFPWR_32, HIGH);
+  Serial.begin(115200);  // 串口115200bps
   /*----------创建热点或连接WIFI二选一------------------*/
   /* 
   WiFi.softAP(ssid, pass); // 生成WIFI热点
@@ -131,15 +145,15 @@ void deleteFile(AsyncWebServerRequest *request) {
 }
 // 将TF卡连接到ESP32
 void connect(AsyncWebServerRequest *request) {
-  if (SD_present) {
-    request->send(200, "text/plain", "1");
-    return;
-  }
-  digitalWrite(16, HIGH);  // TF卡电源关
-  delay(500);
-  digitalWrite(15, HIGH);  // 模拟开关切换到ESP32
-  digitalWrite(16, LOW);   // TF卡电源开
-  delay(500);
+  SD_MMC.end();
+  digitalWrite(CTRL_483, HIGH);   // 关闭切换芯片
+  digitalWrite(TFPWR_EXT, HIGH);  // 关闭所有电源
+  digitalWrite(TFPWR_32, HIGH);
+  delay(1000);
+  digitalWrite(CTRL_483, LOW);  // 开启切换芯片
+  digitalWrite(CTRLTF, HIGH);   // TF连接到ESP32
+  digitalWrite(TFPWR_32, LOW);  // TF电源用ESP32
+  delay(2000);
   if (!SD_MMC.begin("/sdcard", false, false, 80000, 10)) {
     Serial.println("初始化TF卡失败");
     SD_present = false;
@@ -151,16 +165,15 @@ void connect(AsyncWebServerRequest *request) {
 }
 // 将TF卡连接到外部设备(3D打印机)
 void disconnect(AsyncWebServerRequest *request) {
-  if (!SD_present) {
-    request->send(200, "text/plain", "1");
-    return;
-  }
   SD_MMC.end();
-  digitalWrite(16, HIGH);  // TF卡电源关
-  delay(500);
-  digitalWrite(15, LOW);  // 模拟开关切换到外部设备
-  digitalWrite(16, LOW);  // TF卡电源开
-  delay(500);
+  digitalWrite(CTRL_483, HIGH);   // 关闭切换芯片
+  digitalWrite(TFPWR_EXT, HIGH);  // 关闭所有电源
+  digitalWrite(TFPWR_32, HIGH);
+  delay(1000);
+  digitalWrite(CTRL_483, LOW);   // 开启切换芯片
+  digitalWrite(CTRLTF, LOW);     // TF连接到外部设备
+  digitalWrite(TFPWR_EXT, LOW);  // TF电源用外部设备
+  delay(2000);
   SD_present = false;
   request->send(200, "text/plain", "1");
 }
